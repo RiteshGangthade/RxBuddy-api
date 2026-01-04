@@ -1,0 +1,49 @@
+# Common configuration for all services
+spring:
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    time-zone: Asia/Kolkata
+    date-format: yyyy-MM-dd HH:mm:ss
+
+# Eureka Client (common for all services)
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.uuid}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  tracing:
+    sampling:
+      probability: 1.0
+
+# JWT Configuration
+app:
+  jwt:
+    secret: ${JWT_SECRET:rxbuddy-super-secret-key-for-jwt-min-32-characters-long}
+    expiration: ${JWT_EXPIRATION:900000}
+    refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+    issuer: rxbuddy
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.rxbuddy: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

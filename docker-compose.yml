@@ -1,0 +1,291 @@
+version: '3.8'
+
+services:
+  # ===========================================
+  # INFRASTRUCTURE SERVICES
+  # ===========================================
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: rxbuddy-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: rxbuddy
+      MYSQL_PASSWORD: rxbuddypassword
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    command: >
+      --default-authentication-plugin=caching_sha2_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - rxbuddy-network
+
+  # ===========================================
+  # OPTIONAL SERVICES (Enable later)
+  # ===========================================
+
+  # RabbitMQ Message Broker (Phase 4 - Event-driven)
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rxbuddy-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: rxbuddy
+      RABBITMQ_DEFAULT_PASS: rxbuddypassword
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rxbuddy-network
+    profiles:
+      - messaging
+
+  # Redis Cache (Phase 5 - Caching & Token blacklist)
+  redis:
+    image: redis:7-alpine
+    container_name: rxbuddy-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rxbuddy-network
+    profiles:
+      - caching
+
+  # Zipkin for Distributed Tracing (Phase 6 - Observability)
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: rxbuddy-zipkin
+    restart: unless-stopped
+    ports:
+      - "9411:9411"
+    networks:
+      - rxbuddy-network
+    profiles:
+      - tracing
+
+  # phpMyAdmin (Development only)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: rxbuddy-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: rootpassword
+    ports:
+      - "8081:80"
+    networks:
+      - rxbuddy-network
+    profiles:
+      - dev
+
+  # ===========================================
+  # SPRING CLOUD INFRASTRUCTURE
+  # ===========================================
+
+  # Config Server
+  config-server:
+    build:
+      context: ./infrastructure/config-server
+      dockerfile: Dockerfile
+    container_name: rxbuddy-config-server
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      CONFIG_REPO_PATH: /config-repo
+    volumes:
+      - ./config-repo:/config-repo:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - rxbuddy-network
+    profiles:
+      - full
+
+  # Discovery Server (Eureka)
+  discovery-server:
+    build:
+      context: ./infrastructure/discovery-server
+      dockerfile: Dockerfile
+    container_name: rxbuddy-discovery-server
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - rxbuddy-network
+    profiles:
+      - full
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./infrastructure/api-gateway
+      dockerfile: Dockerfile
+    container_name: rxbuddy-api-gateway
+    restart: unless-stopped
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka
+      CONFIG_SERVER_HOST: config-server
+      JWT_SECRET: rxbuddy-super-secret-key-for-jwt-min-32-characters-long
+    networks:
+      - rxbuddy-network
+    profiles:
+      - full
+
+  # ===========================================
+  # APPLICATION SERVICES
+  # ===========================================
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: rxbuddy-auth-service
+    restart: unless-stopped
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    ports:
+      - "8091:8081"
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka
+      CONFIG_SERVER_HOST: config-server
+      JWT_SECRET: rxbuddy-super-secret-key-for-jwt-min-32-characters-long
+    networks:
+      - rxbuddy-network
+    profiles:
+      - full
+
+  # User Service
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: rxbuddy-user-service
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    ports:
+      - "8093:8083"
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka
+      CONFIG_SERVER_HOST: config-server
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: rxbuddy
+      MYSQL_PASSWORD: rxbuddypassword
+    networks:
+      - rxbuddy-network
+    profiles:
+      - full
+
+  # Tenant Service
+  tenant-service:
+    build:
+      context: ./services/tenant-service
+      dockerfile: Dockerfile
+    container_name: rxbuddy-tenant-service
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    ports:
+      - "8094:8084"
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka
+      CONFIG_SERVER_HOST: config-server
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: rxbuddy
+      MYSQL_PASSWORD: rxbuddypassword
+    networks:
+      - rxbuddy-network
+    profiles:
+      - full
+
+  # Card Service
+  card-service:
+    build:
+      context: ./services/card-service
+      dockerfile: Dockerfile
+    container_name: rxbuddy-card-service
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    ports:
+      - "8099:8089"
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka
+      CONFIG_SERVER_HOST: config-server
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: rxbuddy
+      MYSQL_PASSWORD: rxbuddypassword
+    networks:
+      - rxbuddy-network
+    profiles:
+      - full
+
+volumes:
+  mysql_data:
+  rabbitmq_data:
+  redis_data:
+
+networks:
+  rxbuddy-network:
+    driver: bridge

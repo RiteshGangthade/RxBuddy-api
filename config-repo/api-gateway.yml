@@ -1,0 +1,107 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        # Auth Service
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - RewritePath=/api/v1/auth/(?<segment>.*), /api/v1/auth/${segment}
+
+        # User Service
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**, /api/v1/roles/**, /api/v1/permissions/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+        # Tenant Service
+        - id: tenant-service
+          uri: lb://tenant-service
+          predicates:
+            - Path=/api/v1/tenants/**, /api/v1/plans/**, /api/v1/subscriptions/**, /api/v1/admin/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+        # Inventory Service
+        - id: inventory-service
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/v1/products/**, /api/v1/categories/**, /api/v1/stock/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+        # Billing Service
+        - id: billing-service
+          uri: lb://billing-service
+          predicates:
+            - Path=/api/v1/bills/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+        # Customer Service
+        - id: customer-service
+          uri: lb://customer-service
+          predicates:
+            - Path=/api/v1/customers/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+        # Doctor Service
+        - id: doctor-service
+          uri: lb://doctor-service
+          predicates:
+            - Path=/api/v1/doctors/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+        # Supplier Service
+        - id: supplier-service
+          uri: lb://supplier-service
+          predicates:
+            - Path=/api/v1/suppliers/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+        # Notification Service
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - RewritePath=/api/v1/(?<segment>.*), /api/v1/${segment}
+
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:5173"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+# Don't register gateway with itself
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true

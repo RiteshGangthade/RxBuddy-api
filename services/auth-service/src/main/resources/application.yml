@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: auth-service
+  config:
+    import: optional:configserver:http://${CONFIG_SERVER_HOST:localhost}:8888
+
+# Fallback configuration
+server:
+  port: 8081
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:rxbuddy-super-secret-key-for-jwt-min-32-characters-long}
+    expiration: ${JWT_EXPIRATION:900000}
+    refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+    issuer: rxbuddy
+
+logging:
+  level:
+    com.rxbuddy.auth: DEBUG
+    org.springframework.cloud.openfeign: DEBUG

@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: tenant-service
+  config:
+    import: optional:configserver:http://${CONFIG_SERVER_HOST:localhost}:8888
+
+# Fallback configuration
+server:
+  port: 8084
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+
+# Database (fallback)
+spring.datasource:
+  url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/rxbuddy_tenant?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata
+  username: ${MYSQL_USER:rxbuddy}
+  password: ${MYSQL_PASSWORD:rxbuddypassword}
+  driver-class-name: com.mysql.cj.jdbc.Driver
+
+spring.jpa:
+  hibernate:
+    ddl-auto: validate
+  show-sql: false
+  properties:
+    hibernate:
+      format_sql: true
+      dialect: org.hibernate.dialect.MySQLDialect
+
+spring.flyway:
+  enabled: true
+  baseline-on-migrate: true
+  locations: classpath:db/migration
+
+logging:
+  level:
+    com.rxbuddy.tenant: DEBUG
